@@ -179,6 +179,39 @@ in — fine on a trusted home network, otherwise set real passwords or lock it t
 `127.0.0.1`. qBittorrent's peer port (`6881`) is never restricted by this, since it needs
 inbound connections from the internet to work at all.
 
+## 🛠️ Troubleshooting
+
+### Plex asks for "Remote Play" even though you're on the same network
+
+This is a Docker Desktop (Mac/Windows) quirk, not a Plex bug. Docker Desktop's port
+forwarding runs through an internal VM, so every client that reaches Plex through its
+published port — even a phone on your own WiFi — shows up to Plex with a source IP from
+Docker Desktop's internal NAT range (typically `192.168.65.0/24`), not the client's real
+LAN address. Plex doesn't recognize that range as local, tags the connection "WAN", and
+starts asking for Remote Play / capping quality as if you were away from home. You can
+confirm this yourself — a non-zero count means real local requests are being tagged WAN:
+
+```bash
+docker exec <plex-container> grep -c '(WAN)' '/config/Library/Application Support/Plex Media Server/Logs/Plex Media Server.log'
+```
+
+**Fix:** in Plex, go to **Settings → Network**, turn on **Show Advanced**, and add your
+Docker Desktop NAT range plus your real LAN subnet to **"List of IP addresses and
+networks that are allowed without auth"** (this field doubles as Plex's trusted-local-
+network list, not just an auth bypass) — e.g. `192.168.65.0/24,192.168.0.0/24` (adjust the
+second range to match your actual router's subnet). Same thing via API, without touching
+the UI:
+
+```bash
+TOKEN=$(grep -o 'PlexOnlineToken="[^"]*"' "config/plex/Library/Application Support/Plex Media Server/Preferences.xml" | cut -d'"' -f2)
+curl -X PUT "http://localhost:32400/:/prefs?allowedNetworks=192.168.65.0%2F24%2C192.168.0.0%2F24" -H "X-Plex-Token: $TOKEN"
+```
+
+Takes effect immediately, no restart needed. This setting lives in `config/plex/`, so it
+survives container recreates (e.g. from the linker's "Use this drive" or Plex-claim
+actions) — you only need to set it once. On native Linux Docker (no Docker Desktop VM),
+this normally isn't an issue since client IPs are preserved as-is.
+
 ## 📊 Monitoring
 
 - **cAdvisor** — per-container CPU/memory/network metrics
