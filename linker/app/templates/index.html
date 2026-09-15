@@ -193,12 +193,39 @@
       attachCopyButtons(rows);
     }
 
+    // navigator.clipboard needs a "secure context" (HTTPS, or the page
+    // itself being served from localhost) - visiting this dashboard as
+    // plain http://<server-ip>:5050 doesn't count, so it's often simply
+    // undefined there. Fall back to the old execCommand approach (works
+    // over plain HTTP) instead of silently doing nothing.
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (!ok) throw new Error('copy command was not allowed by the browser');
+    }
+
     function attachCopyButtons(container) {
       container.querySelectorAll('.copy-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
-          await navigator.clipboard.writeText(btn.dataset.copy);
           const original = btn.textContent;
-          btn.textContent = 'Copied!';
+          try {
+            await copyText(btn.dataset.copy);
+            btn.textContent = 'Copied!';
+          } catch (e) {
+            btn.textContent = 'Copy failed';
+            console.error('Copy failed:', e);
+          }
           setTimeout(() => { btn.textContent = original; }, 1500);
         });
       });
