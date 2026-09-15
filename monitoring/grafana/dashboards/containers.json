@@ -1,0 +1,84 @@
+{
+  "title": "Containers (cAdvisor)",
+  "uid": "hmm-containers",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 3,
+  "refresh": "15s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU usage per container",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (id) (rate(container_cpu_usage_seconds_total{id=~\"/docker/[0-9a-f]{64}\"}[5m])), \"short_id\", \"$1\", \"id\", \"/docker/([0-9a-f]{12}).*\") * on(short_id) group_left(name) docker_container_name_map",
+          "legendFormat": "{{name}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Memory usage per container",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (id) (container_memory_usage_bytes{id=~\"/docker/[0-9a-f]{64}\"}), \"short_id\", \"$1\", \"id\", \"/docker/([0-9a-f]{12}).*\") * on(short_id) group_left(name) docker_container_name_map",
+          "legendFormat": "{{name}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Network traffic (in) per container",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (id) (rate(container_network_receive_bytes_total{id=~\"/docker/[0-9a-f]{64}\"}[5m])), \"short_id\", \"$1\", \"id\", \"/docker/([0-9a-f]{12}).*\") * on(short_id) group_left(name) docker_container_name_map",
+          "legendFormat": "{{name}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Network traffic (out) per container",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (id) (rate(container_network_transmit_bytes_total{id=~\"/docker/[0-9a-f]{64}\"}[5m])), \"short_id\", \"$1\", \"id\", \"/docker/([0-9a-f]{12}).*\") * on(short_id) group_left(name) docker_container_name_map",
+          "legendFormat": "{{name}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Running container count",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "count(count by (id) (container_last_seen{id=~\"/docker/[0-9a-f]{64}\"}))",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    }
+  ]
+}
