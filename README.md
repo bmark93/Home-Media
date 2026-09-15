@@ -82,6 +82,9 @@ hit "Re-link now":
   one indexer in Prowlarr, it appears in both automatically)
 - ✅ qBittorrent's admin password enforced from `.env` on every startup
 - ✅ qBittorrent's download path kept pointed at the shared `/downloads` volume, self-healing
+- ✅ **Plex** kept reachable as "local" from your own LAN under Docker Desktop, which
+  otherwise misclassifies it as remote and starts demanding Remote Play (see
+  [Troubleshooting](#-troubleshooting) for why)
 - 🔄 Optional: **Watchtower** auto-updates every container, controlled by a toggle in the UI
 
 ### 🖥️ The linker's own dashboard
@@ -183,34 +186,40 @@ inbound connections from the internet to work at all.
 
 ### Plex asks for "Remote Play" even though you're on the same network
 
-This is a Docker Desktop (Mac/Windows) quirk, not a Plex bug. Docker Desktop's port
-forwarding runs through an internal VM, so every client that reaches Plex through its
-published port — even a phone on your own WiFi — shows up to Plex with a source IP from
-Docker Desktop's internal NAT range (typically `192.168.65.0/24`), not the client's real
-LAN address. Plex doesn't recognize that range as local, tags the connection "WAN", and
-starts asking for Remote Play / capping quality as if you were away from home. You can
-confirm this yourself — a non-zero count means real local requests are being tagged WAN:
+This is a Docker Desktop (Mac/Windows) quirk, not a Plex bug, and it has two stacking
+causes.
+
+**Cause 1 — client IPs get NATted away.** Docker Desktop's port forwarding runs through
+an internal VM, so every client that reaches Plex through its published port — even a
+phone on your own WiFi — shows up to Plex with a source IP from Docker Desktop's internal
+NAT range, not the client's real LAN address. Plex doesn't recognize that range as local
+and tags the connection "WAN". Confirm it yourself — a non-zero count means real local
+requests are being tagged WAN:
 
 ```bash
 docker exec <plex-container> grep -c '(WAN)' '/config/Library/Application Support/Plex Media Server/Logs/Plex Media Server.log'
 ```
 
-**Fix:** in Plex, go to **Settings → Network**, turn on **Show Advanced**, and add your
-Docker Desktop NAT range plus your real LAN subnet to **"List of IP addresses and
-networks that are allowed without auth"** (this field doubles as Plex's trusted-local-
-network list, not just an auth bypass) — e.g. `192.168.65.0/24,192.168.0.0/24` (adjust the
-second range to match your actual router's subnet). Same thing via API, without touching
-the UI:
+**Cause 2 — automatic remote-access mapping fails and stays failed.** Plex tries to punch
+a port-forwarding hole (UPnP/NAT-PMP) through your router on startup so it can register a
+reachable address with plex.tv. Docker Desktop's VM has no real interface to your router,
+so this always fails — the server's status gets stuck at `Mapped - Not Published (Not
+Reachable)` (check the same log for `mapping state set to`). Without a reachable address
+on file, Plex has nothing solid to hand LAN clients either, so it falls back to routing
+through Plex Relay — which is what actually drives the "Remote Play"/quality-capped
+behavior, on top of the WAN tagging from cause 1.
 
-```bash
-TOKEN=$(grep -o 'PlexOnlineToken="[^"]*"' "config/plex/Library/Application Support/Plex Media Server/Preferences.xml" | cut -d'"' -f2)
-curl -X PUT "http://localhost:32400/:/prefs?allowedNetworks=192.168.65.0%2F24%2C192.168.0.0%2F24" -H "X-Plex-Token: $TOKEN"
-```
-
-Takes effect immediately, no restart needed. This setting lives in `config/plex/`, so it
-survives container recreates (e.g. from the linker's "Use this drive" or Plex-claim
-actions) — you only need to set it once. On native Linux Docker (no Docker Desktop VM),
-this normally isn't an issue since client IPs are preserved as-is.
+**Fix — handled automatically, no IPs to type in anywhere.** The linker fixes both causes
+on every linking pass (`app/plex_network.py`): it discovers Docker Desktop's NAT range at
+runtime (by resolving `host.docker.internal` — a name only Docker Desktop defines, so this
+naturally does nothing on native Linux Docker, which doesn't have the problem anyway), pairs
+it with your own `SERVER_IP` from `.env`, and sets Plex's `allowedNetworks` (trusted local
+networks) and `customConnections` (an explicitly published reachable LAN URL, sidestepping
+the UPnP mapping that will never succeed here) accordingly — merging with, never
+overwriting, anything you've set by hand in Plex's own Network settings. Watch it happen in
+the linker's **Services** table, under Plex's badges (`local_network`), or in its log. The
+only thing required on your end is a real `SERVER_IP` in `.env` (see Quick start above) —
+without it, this step just skips itself.
 
 ## 📊 Monitoring
 

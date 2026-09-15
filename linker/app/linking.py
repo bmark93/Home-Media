@@ -27,6 +27,8 @@ from pathlib import Path
 
 import httpx
 
+from app import plex_network
+
 SONARR_URL = "http://sonarr:8989"
 RADARR_URL = "http://radarr:7878"
 PROWLARR_URL = "http://prowlarr:9696"
@@ -303,12 +305,19 @@ async def run_linking(qbit_user: str, qbit_pass: str) -> None:
                 STATE.services["qbittorrent"].linked["download_path"] = ok
                 STATE.note(f"qBittorrent download path: {msg}")
 
-            # Plex reachability only (no auto-configuration - see README)
+            # Plex: reachability only for libraries/claiming (no auto-configuration -
+            # see README), but the Docker Desktop local-network workaround below is
+            # applied automatically every run - see app/plex_network.py.
             try:
                 r = await client.get(PLEX_URL, timeout=5)
                 STATE.services["plex"].reachable = r.status_code < 500
             except httpx.HTTPError:
                 STATE.services["plex"].reachable = False
+
+            if STATE.services["plex"].reachable:
+                ok, msg = await plex_network.apply(client)
+                STATE.services["plex"].linked["local_network"] = ok
+                STATE.note(f"Plex local-network fix: {msg}")
 
             # Seerr reachability only (no auto-configuration - see README).
             # Its admin account requires a real Plex sign-in, and its settings API
