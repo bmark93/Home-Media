@@ -256,6 +256,7 @@ services:
       WATCHTOWER_API_TOKEN: ${WATCHTOWER_API_TOKEN:-changeme-token}
       PROJECT_DIR: ${PWD}
       HOST_HOME: ${HOME}
+      SERVER_IP: ${SERVER_IP:-localhost}
     volumes:
       - ./config/sonarr:/configs/sonarr:ro
       - ./config/radarr:/configs/radarr:ro

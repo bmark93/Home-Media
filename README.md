@@ -113,6 +113,7 @@ Open `.env` and set at minimum:
 | `PUID` / `PGID` | Your user IDs (`id -u` / `id -g`) so files aren't owned by root |
 | `QBIT_USER` / `QBIT_PASS` | qBittorrent login — enforced on every startup |
 | `BIND_ADDRESS` | `0.0.0.0` for LAN access, `127.0.0.1` for this machine only |
+| `SERVER_IP` | This machine's LAN IP/hostname — used to build the linker's "Open" links |
 | `PLEX_CLAIM` | Get one at https://www.plex.tv/claim/ **while logged in** — valid 5 min |
 
 > **Tip:** grab the Plex claim token right before the next step since it expires fast.
@@ -127,9 +128,9 @@ databases). The linker waits for everything to be healthy, then links it all tog
 automatically.
 
 👉 Now open **http://localhost:5050** (`http://<server-ip>:5050` on a remote/headless
-box) and watch it happen. The linker's own "Open" links in that dashboard always point
-at whichever host/IP you're already viewing it from, so they work either way without
-any configuration.
+box) and watch it happen. Set `SERVER_IP` in `.env` to that same IP/hostname first -
+it's what the linker's own "Open" links (and Grafana/Prometheus) are built from, always
+plain `http://`.
 
 ## 🧩 The few things that stay manual
 

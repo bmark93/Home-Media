@@ -20,11 +20,11 @@ app = FastAPI(title="Home Media Manager")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
-# Port + path only, not full URLs: this app doesn't know what hostname/IP
-# the browser is actually reaching it on (could be localhost on a dev
-# machine, or a LAN IP/hostname on a real server) - so "Open" links are
-# built client-side in the browser against whatever host it's already on
-# (window.location.hostname), not hardcoded here.
+# SERVER_IP in .env is the single source of truth for "Open" links - set it
+# to this machine's real LAN IP/hostname. Always plain http://, never https,
+# no per-browser cleverness.
+SERVER_IP = os.environ.get("SERVER_IP", "localhost")
+
 SERVICE_LINKS = {
     "plex": {"label": "Plex", "port": 32400, "path": "/web"},
     "seerr": {"label": "Seerr", "port": 5055, "path": ""},
@@ -47,8 +47,7 @@ def build_status() -> dict:
         svc = STATE.services.get(key)
         result[key] = {
             "label": meta["label"],
-            "port": meta["port"],
-            "path": meta["path"],
+            "url": f"http://{SERVER_IP}:{meta['port']}{meta['path']}",
             "reachable": svc.reachable if svc else False,
             "linked": svc.linked if svc else {},
             "error": svc.error if svc else None,
@@ -67,8 +66,8 @@ async def index(request: Request):
             "running": STATE.running,
             "last_run": STATE.last_run,
             "auto_update": SETTINGS.auto_update,
-            "grafana_port": 3000,
-            "prometheus_port": 9090,
+            "grafana_url": f"http://{SERVER_IP}:3000",
+            "prometheus_url": f"http://{SERVER_IP}:9090",
         },
     )
 
