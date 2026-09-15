@@ -131,9 +131,31 @@ services:
 
   # ----------------------- Request management (Seerr) -----------------------
   # https://github.com/seerr-team/seerr - the Jellyseerr/Overseerr successor project.
+  #
+  # Unlike the linuxserver.io images above, this one isn't PUID/PGID-aware -
+  # it always runs as a fixed uid 1000 baked into the image. If the host
+  # first creates ./config/seerr owned by someone else (e.g. root, which is
+  # what happens if you first bring the stack up with sudo), that user can't
+  # write to its own config dir and it crash-loops with EACCES. seerr-init
+  # fixes the folder's ownership every startup so this can't happen, and
+  # `user:` below pins the container to the same PUID/PGID as everything
+  # else in this stack instead of relying on the image's baked-in default.
+  seerr-init:
+    image: alpine:latest
+    command: ["sh", "-c", "mkdir -p /config && chown -R ${PUID:-1000}:${PGID:-1000} /config"]
+    volumes:
+      - ./config/seerr:/config
+    restart: "no"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+
   seerr:
     image: ghcr.io/seerr-team/seerr:latest
     init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
+    depends_on:
+      seerr-init:
+        condition: service_completed_successfully
     environment:
       TZ: ${TZ:-Europe/Budapest}
       PORT: "5055"
