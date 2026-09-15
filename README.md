@@ -194,7 +194,9 @@ downloads/                # qBittorrent downloads here; Sonarr/Radarr pick up fi
 ```
 
 Files elsewhere on disk? Change `MEDIA_MOVIES_PATH` / `MEDIA_TV_PATH` / `DOWNLOADS_PATH`
-in `.env` — or just use the linker's **Host storage** picker.
+in `.env` — or just use the linker's **Host storage** picker. Already have an existing
+folder layout with your own names? See
+[docs/existing-media-folders.md](docs/existing-media-folders.md).
 </details>
 
 <details>
