@@ -1,0 +1,299 @@
+networks:
+  media-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+services:
+  # ---------- One-shot init: presets the qBittorrent admin password ----------
+  qbit-init:
+    build: ./linker
+    command: ["python", "-m", "app.qbit_init"]
+    environment:
+      QBIT_USER: ${QBIT_USER:-admin}
+      QBIT_PASS: ${QBIT_PASS:-admin}
+      QBIT_TRUSTED_SUBNET: "172.30.0.0/24"
+    volumes:
+      - ./config/qbittorrent:/config
+    restart: "no"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+
+  # ---------------------------- Torrent client ----------------------------
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    depends_on:
+      qbit-init:
+        condition: service_completed_successfully
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Budapest}
+      WEBUI_PORT: 8080
+    volumes:
+      - ./config/qbittorrent:/config
+      - ${DOWNLOADS_PATH:-./downloads}:/downloads
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    networks: [media-net]
+
+  # ---------------------------- Indexer manager ----------------------------
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Budapest}
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:9696:9696"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9696/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    networks: [media-net]
+
+  # -------------------------------- TV shows -------------------------------
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Budapest}
+    volumes:
+      - ./config/sonarr:/config
+      - ${MEDIA_TV_PATH:-./media/tv}:/tv
+      - ${DOWNLOADS_PATH:-./downloads}:/downloads
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:8989:8989"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8989/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    networks: [media-net]
+
+  # ---------------------------------- Movies --------------------------------
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Budapest}
+    volumes:
+      - ./config/radarr:/config
+      - ${MEDIA_MOVIES_PATH:-./media/movies}:/movies
+      - ${DOWNLOADS_PATH:-./downloads}:/downloads
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:7878:7878"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7878/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    networks: [media-net]
+
+  # -------------------------------- Plex -----------------------------------
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Budapest}
+      VERSION: docker
+      PLEX_CLAIM: ${PLEX_CLAIM:-}
+    volumes:
+      - ./config/plex:/config
+      - ${MEDIA_MOVIES_PATH:-./media/movies}:/movies
+      - ${MEDIA_TV_PATH:-./media/tv}:/tv
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:32400:32400"
+    restart: unless-stopped
+    networks: [media-net]
+
+  # ----------------------- Request management (Seerr) -----------------------
+  # https://github.com/seerr-team/seerr - the Jellyseerr/Overseerr successor project.
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    environment:
+      TZ: ${TZ:-Europe/Budapest}
+      PORT: "5055"
+      LOG_LEVEL: info
+    volumes:
+      - ./config/seerr:/app/config
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:5055:5055"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5055/api/v1/settings/public"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    security_opt:
+      - no-new-privileges
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    networks: [media-net]
+
+  # ----------------------------- Monitoring --------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:9090:9090"
+    restart: unless-stopped
+    networks: [media-net]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:8081:8080"
+    restart: unless-stopped
+    networks: [media-net]
+
+  qbittorrent-exporter:
+    image: esanchezm/prometheus-qbittorrent-exporter:latest
+    environment:
+      QBITTORRENT_HOST: qbittorrent
+      QBITTORRENT_PORT: 8080
+      QBITTORRENT_USERNAME: ${QBIT_USER:-admin}
+      QBITTORRENT_PASSWORD: ${QBIT_PASS:-admin}
+    depends_on:
+      qbittorrent:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [media-net]
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards-json:ro
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:3000:3000"
+    restart: unless-stopped
+    networks: [media-net]
+
+  # ------------------------- Automatic container updates -------------------------
+  # Runs with no polling interval - it only checks/updates when its HTTP API is
+  # called, which the linker app does based on the "Auto-update" toggle in its UI.
+  watchtower:
+    image: containrrr/watchtower:latest
+    environment:
+      WATCHTOWER_HTTP_API_UPDATE: "true"
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_API_TOKEN:-changeme-token}
+      WATCHTOWER_CLEANUP: "true"
+      DOCKER_API_VERSION: "1.44"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:8091:8080"
+    restart: unless-stopped
+    networks: [media-net]
+
+  # -------------------- Our app: automatic API linking + updates --------------------
+  linker:
+    build: ./linker
+    environment:
+      QBIT_USER: ${QBIT_USER:-admin}
+      QBIT_PASS: ${QBIT_PASS:-admin}
+      WATCHTOWER_API_TOKEN: ${WATCHTOWER_API_TOKEN:-changeme-token}
+      PROJECT_DIR: ${PWD}
+      HOST_HOME: ${HOME}
+    volumes:
+      - ./config/sonarr:/configs/sonarr:ro
+      - ./config/radarr:/configs/radarr:ro
+      - ./config/prowlarr:/configs/prowlarr:ro
+      - linker-data:/data
+      # Mounted at the SAME absolute path as on the real host (not e.g. /project) -
+      # this is what lets the linker run `docker compose up -d <service>` against
+      # the real daemon (via the socket below) and have every relative volume
+      # path in this file (./config/..., ./media/..., ./downloads) resolve to the
+      # same real host path whether Compose is invoked from your terminal or from
+      # inside this container. Also how it reads/writes the real .env. Requires
+      # `docker compose up` to always be run from this project's directory (as
+      # the Quick Start in README.md already does), since ${PWD} is resolved by
+      # your shell at that moment.
+      - ${PWD}:${PWD}
+      # Lets the linker actually apply its own "Use this drive" / "Save token"
+      # changes by recreating the affected containers itself, instead of just
+      # telling you the command to run. Same access Watchtower already has in
+      # this stack for the same reason (creating/replacing containers).
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Lets the linker's "Host storage" drive browser see mounted drives, and
+      # its "Use this" button create movies/tv/downloads folders on the
+      # chosen drive, to help you point MEDIA_MOVIES_PATH/MEDIA_TV_PATH/
+      # DOWNLOADS_PATH in .env at external storage. /Volumes is macOS's
+      # external-drive location and is shared into containers by Docker
+      # Desktop by default. On Linux, uncomment/add the mounts matching
+      # where your drives are (commonly /mnt or /media) - Docker Desktop on
+      # macOS will refuse to start this container if you list a host path
+      # it hasn't been given access to (Settings -> Resources -> File Sharing).
+      # This grants the linker write access to the drive to create those
+      # folders - not read-only, since "Use this" needs to mkdir on it.
+      - /Volumes:/hostfs/Volumes
+      # - /mnt:/hostfs/mnt
+      # - /media:/hostfs/media
+      # Backs the "Internal drive" option in "Host storage": macOS's boot
+      # volume itself (/Volumes/Macintosh HD) is NOT a real, working bind
+      # mount through Docker Desktop - folders created there via a container
+      # can report success without ever landing on the real disk (confirmed
+      # the hard way). A folder under your actual home directory is - it's
+      # the same kind of path this project's own default ./media folders
+      # already use successfully. Mounted at the same absolute path as on
+      # the host for the same reason as the project-dir mount above.
+      - ${HOME}:${HOME}
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:5050:8000"
+    depends_on:
+      sonarr:
+        condition: service_healthy
+      radarr:
+        condition: service_healthy
+      prowlarr:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [media-net]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  linker-data:

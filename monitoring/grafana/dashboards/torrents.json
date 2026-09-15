@@ -1,0 +1,81 @@
+{
+  "title": "qBittorrent",
+  "uid": "hmm-torrents",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "qBittorrent reachable",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [{ "expr": "qbittorrent_up", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "id": 2,
+      "title": "Active torrent count",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(qbittorrent_torrents_count)", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Download speed",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [{ "expr": "rate(qbittorrent_dl_info_data_total[5m])", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "id": 4,
+      "title": "Upload speed",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [{ "expr": "rate(qbittorrent_up_info_data_total[5m])", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "id": 5,
+      "title": "Download/upload speed over time",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "expr": "rate(qbittorrent_dl_info_data_total[5m])", "legendFormat": "download", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(qbittorrent_up_info_data_total[5m])", "legendFormat": "upload", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Torrents by status",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "qbittorrent_torrents_count",
+          "legendFormat": "{{status}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    }
+  ]
+}

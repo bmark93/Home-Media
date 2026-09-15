@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home Media Manager</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>🎬 Home Media Manager</h1>
+    <p class="subtitle">Plex ecosystem - automatic API linking</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="card-header">
+        <h2>Services</h2>
+        <button id="relink-btn">↻ Re-link now</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Service</th><th>Status</th><th>Links</th><th></th></tr>
+        </thead>
+        <tbody id="service-rows">
+          {% for key, s in services.items() %}
+          <tr>
+            <td>{{ s.label }}</td>
+            <td>
+              <span class="dot {{ 'up' if s.reachable else 'down' }}"></span>
+              {{ 'running' if s.reachable else 'unreachable' }}
+              {% if s.error %}<span class="err">({{ s.error }})</span>{% endif %}
+            </td>
+            <td>
+              {% if s.linked %}
+                {% for target, ok in s.linked.items() %}
+                  <span class="badge {{ 'ok' if ok else 'fail' }}">{{ target }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="muted">-</span>
+              {% endif %}
+            </td>
+            <td><a class="open" href="{{ s.url }}" target="_blank">Open ↗</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted small">Last run: <span id="last-run">{{ last_run or 'never' }}</span>
+        <span id="running-indicator" style="{{ '' if running else 'display:none' }}"> · running...</span>
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><h2>Connection info</h2></div>
+      <p class="muted small">For manually connecting a service like Seerr to Sonarr/Radarr: paste
+        these exact values into its "Hostname", "Port" and "API Key" fields. Use the hostname shown
+        here, not <code>localhost</code> - each app runs in its own container, so <code>localhost</code>
+        from Seerr's point of view means the Seerr container itself, not Sonarr or Radarr.</p>
+      <table>
+        <thead><tr><th>Service</th><th>Hostname</th><th>Port</th><th>API Key</th><th></th></tr></thead>
+        <tbody id="key-rows"></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Host storage</h2>
+        <button id="scan-drives-btn">Scan drives</button>
+      </div>
+      <p class="muted small">Lists external drives plus an "Internal drive" option under your home
+        folder - using the internal drive is completely fine, it's just a normal folder there instead of
+        an external disk. (macOS's own named system/boot volume specifically is left out: unlike a
+        regular folder or a real external drive, Docker Desktop doesn't reliably bind-mount that one -
+        a folder can report as created there without ever landing on the real disk.) Click "Use this" to
+        create <code>movies</code>/<code>tv</code>/<code>downloads</code> folders, point <code>.env</code>
+        at them, and recreate Sonarr, Radarr, Plex and qBittorrent with the new paths - all automatic.</p>
+      <table>
+        <thead><tr><th>Path</th><th>Free</th><th>Total</th><th></th></tr></thead>
+        <tbody id="drive-rows"><tr><td colspan="4" class="muted">Click "Scan drives" to list them.</td></tr></tbody>
+      </table>
+      <div id="use-drive-result" hidden></div>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><h2>Plex claim</h2></div>
+      <p class="muted small">Without this, Plex comes up "unclaimed" - not tied to any account, which
+        also breaks Seerr's setup wizard (it can't list or connect to a Plex server that isn't claimed
+        by the account you sign into it with). Get a token while logged into Plex at
+        <a class="open" href="https://www.plex.tv/claim" target="_blank">plex.tv/claim</a> - it's only
+        valid for 5 minutes, so paste it here right after copying it.</p>
+      <div class="row">
+        <input type="text" id="plex-claim-input" placeholder="claim-xxxxxxxxxxxxxxxxxxxx" />
+        <button id="plex-claim-btn">Save token</button>
+      </div>
+      <div id="plex-claim-result" hidden></div>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><h2>Log</h2></div>
+      <pre id="log">{{ log|join('\n') }}</pre>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><h2>Container updates</h2></div>
+      <p class="muted small">Backed by Watchtower. When enabled, this app periodically asks
+        Watchtower to check every container for a newer image and update it. Off by default.</p>
+      <div class="row">
+        <label class="switch">
+          <input type="checkbox" id="auto-update-toggle" {{ 'checked' if auto_update else '' }} />
+          <span class="slider"></span>
+        </label>
+        <span id="auto-update-label">{{ 'Auto-update: on' if auto_update else 'Auto-update: off' }}</span>
+        <button id="update-now-btn">Check for updates now</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><h2>Monitoring</h2></div>
+      <p>
+        <a class="open" href="{{ grafana_url }}" target="_blank">Grafana dashboard ↗</a>
+        &nbsp;·&nbsp;
+        <a class="open" href="{{ prometheus_url }}" target="_blank">Prometheus ↗</a>
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <p class="muted small">Plex: adding libraries (Movies/TV) and claiming the server is a one-time
+      manual step in the Plex web UI - it's tied to your Plex account, so it can't be safely automated.</p>
+    <p class="muted small">Seerr: the initial admin setup requires signing in with your real Plex
+      account, and its settings API only accepts a logged-in session (not an API key) - so connecting
+      Sonarr/Radarr inside Seerr's own Settings page is also a one-time manual step.</p>
+  </footer>
+
+  <script>
+    async function refresh() {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      document.getElementById('last-run').textContent = data.last_run || 'never';
+      document.getElementById('running-indicator').style.display = data.running ? 'inline' : 'none';
+      document.getElementById('log').textContent = data.log.join('\n');
+      document.getElementById('auto-update-toggle').checked = data.auto_update;
+      document.getElementById('auto-update-label').textContent = data.auto_update ? 'Auto-update: on' : 'Auto-update: off';
+
+      const rows = document.getElementById('service-rows');
+      rows.innerHTML = '';
+      for (const [key, s] of Object.entries(data.services)) {
+        const linked = Object.entries(s.linked || {})
+          .map(([t, ok]) => `<span class="badge ${ok ? 'ok' : 'fail'}">${t}</span>`)
+          .join(' ') || '<span class="muted">-</span>';
+        rows.innerHTML += `
+          <tr>
+            <td>${s.label}</td>
+            <td><span class="dot ${s.reachable ? 'up' : 'down'}"></span> ${s.reachable ? 'running' : 'unreachable'}
+              ${s.error ? `<span class="err">(${s.error})</span>` : ''}</td>
+            <td>${linked}</td>
+            <td><a class="open" href="${s.url}" target="_blank">Open ↗</a></td>
+          </tr>`;
+      }
+    }
+
+    async function loadKeys() {
+      const res = await fetch('/api/keys');
+      const data = await res.json();
+      const rows = document.getElementById('key-rows');
+      rows.innerHTML = '';
+      for (const [key, info] of Object.entries(data)) {
+        const label = key.charAt(0).toUpperCase() + key.slice(1);
+        const keyText = info.api_key || '(not available yet)';
+        rows.innerHTML += `
+          <tr>
+            <td>${label}</td>
+            <td><code>${info.host}</code></td>
+            <td><code>${info.port}</code></td>
+            <td><code>${keyText}</code></td>
+            <td>${info.api_key ? `<button class="copy-btn" data-copy="${keyText}">Copy key</button>` : ''}</td>
+          </tr>`;
+      }
+      attachCopyButtons(rows);
+    }
+
+    function attachCopyButtons(container) {
+      container.querySelectorAll('.copy-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(btn.dataset.copy);
+          const original = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = original; }, 1500);
+        });
+      });
+    }
+
+    document.getElementById('scan-drives-btn').addEventListener('click', async () => {
+      const rows = document.getElementById('drive-rows');
+      rows.innerHTML = '<tr><td colspan="4" class="muted">Scanning...</td></tr>';
+      const res = await fetch('/api/drives');
+      const data = await res.json();
+      if (!data.drives.length) {
+        rows.innerHTML = '<tr><td colspan="4" class="muted">No drives found under /Volumes, /mnt or /media. ' +
+          'On macOS, check Docker Desktop -> Settings -> Resources -> File Sharing includes that path.</td></tr>';
+        return;
+      }
+      rows.innerHTML = '';
+      for (const d of data.drives) {
+        rows.innerHTML += `
+          <tr>
+            <td>${d.label || d.host_path}<br><code class="muted small">${d.host_path}</code></td>
+            <td>${d.free_human}</td>
+            <td>${d.total_human}</td>
+            <td>
+              <button class="copy-btn" data-copy="${d.host_path}">Copy path</button>
+              <button class="use-drive-btn" data-path="${d.host_path}">Use this</button>
+            </td>
+          </tr>`;
+      }
+      attachCopyButtons(rows);
+      rows.querySelectorAll('.use-drive-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Applying...';
+          const box = document.getElementById('use-drive-result');
+          box.hidden = false;
+          box.innerHTML = '<p class="muted">Writing .env and recreating Sonarr, Radarr, Plex and qBittorrent with the new paths - this can take a bit...</p>';
+          const res = await fetch('/api/drives/use', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: btn.dataset.path }),
+          });
+          const result = await res.json();
+          if (result.ok && result.applied) {
+            box.innerHTML = `
+              <p><strong>Done - applied automatically.</strong> Now storing media on:</p>
+              <ul>
+                <li>Movies: <code>${result.paths.MEDIA_MOVIES_PATH}</code></li>
+                <li>TV: <code>${result.paths.MEDIA_TV_PATH}</code></li>
+                <li>Downloads: <code>${result.paths.DOWNLOADS_PATH}</code></li>
+              </ul>
+              <p class="muted small">Existing files already in the old location were not moved.</p>`;
+            btn.textContent = 'Done';
+            setTimeout(refresh, 3000);
+          } else if (result.ok && !result.applied) {
+            box.innerHTML = `<p class="err">.env was updated, but applying it failed: ${result.apply_output}</p>
+              <p class="muted small">Fix the issue above, then run <code>docker compose up -d</code> on the host yourself to apply the already-saved paths.</p>`;
+            btn.disabled = false;
+            btn.textContent = 'Use this';
+          } else {
+            box.innerHTML = `<p class="err">Failed: ${result.error}</p>`;
+            btn.disabled = false;
+            btn.textContent = 'Use this';
+          }
+        });
+      });
+    });
+
+    document.getElementById('plex-claim-btn').addEventListener('click', async () => {
+      const input = document.getElementById('plex-claim-input');
+      const btn = document.getElementById('plex-claim-btn');
+      const box = document.getElementById('plex-claim-result');
+      const token = input.value.trim();
+      if (!token) return;
+      btn.disabled = true;
+      btn.textContent = 'Applying...';
+      box.hidden = false;
+      box.innerHTML = '<p class="muted">Saving token and recreating Plex...</p>';
+      const res = await fetch('/api/plex-claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const result = await res.json();
+      if (result.ok && result.applied) {
+        box.innerHTML = '<p><strong>Done.</strong> Plex has been recreated and should be claimed to your account now.</p>';
+        input.value = '';
+        setTimeout(refresh, 3000);
+      } else if (result.ok && !result.applied) {
+        box.innerHTML = `<p class="err">Token was saved, but applying it failed: ${result.apply_output}</p>
+          <p class="muted small">If the token expired (5 min limit), get a fresh one and try again.</p>`;
+      } else {
+        box.innerHTML = `<p class="err">Failed: ${result.error}</p>`;
+      }
+      btn.disabled = false;
+      btn.textContent = 'Save token';
+    });
+
+    document.getElementById('relink-btn').addEventListener('click', async () => {
+      await fetch('/api/relink', { method: 'POST' });
+      refresh();
+      setTimeout(loadKeys, 2000);
+    });
+
+    document.getElementById('auto-update-toggle').addEventListener('change', async (e) => {
+      await fetch('/api/settings/auto-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: e.target.checked }),
+      });
+      refresh();
+    });
+
+    document.getElementById('update-now-btn').addEventListener('click', async () => {
+      await fetch('/api/update-now', { method: 'POST' });
+      refresh();
+    });
+
+    setInterval(refresh, 4000);
+    loadKeys();
+  </script>
+</body>
+</html>

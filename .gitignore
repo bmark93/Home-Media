@@ -1,0 +1,7 @@
+.env
+config/
+downloads/
+media/
+__pycache__/
+*.pyc
+.DS_Store
