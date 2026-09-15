@@ -167,6 +167,41 @@ def use_drive(host_path: str) -> dict:
     return {"ok": True, "paths": paths}
 
 
+def _read_env_value(key: str) -> str | None:
+    if not ENV_FILE.exists():
+        return None
+    for line in ENV_FILE.read_text().splitlines():
+        if line.startswith(f"{key}="):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
+def resolve_downloads_path() -> Path | None:
+    """
+    Resolve DOWNLOADS_PATH from .env to a path this (the linker) container can
+    actually read/write. DOWNLOADS_PATH is whatever host path Sonarr/Radarr/
+    qBittorrent were given - either relative (the default "./downloads",
+    resolved against PROJECT_DIR, which is bind-mounted into this container
+    at the identical absolute path) or absolute (an external drive picked via
+    "Host storage" above, reachable here only through the /hostfs/* mounts -
+    see _container_path_for).
+    """
+    raw = _read_env_value("DOWNLOADS_PATH")
+    if not raw:
+        return None
+
+    project_dir = os.environ.get("PROJECT_DIR", "")
+    if not raw.startswith("/"):
+        if not project_dir:
+            return None
+        return Path(project_dir) / raw
+
+    if project_dir and (raw == project_dir or raw.startswith(project_dir + "/")):
+        return Path(raw)
+
+    return _container_path_for(raw)
+
+
 def set_plex_claim(token: str) -> dict:
     token = token.strip()
     if not token:

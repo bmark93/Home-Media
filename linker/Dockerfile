@@ -7,6 +7,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# tzdata so the TZ env var (set from .env, same as every other service here)
+# actually changes what datetime.now() returns - needed for the cleanup job's
+# schedule to run at the wall-clock time the user picks, not UTC.
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY app ./app
 
 # docker CLI + compose plugin, so the linker can apply its own storage/Plex-claim

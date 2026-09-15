@@ -115,6 +115,88 @@
     </section>
 
     <section class="card">
+      <div class="card-header"><h2>Downloads cleanup</h2></div>
+      <p class="muted small">Once Sonarr/Radarr import a finished download into <code>movies</code>/<code>tv</code>,
+        the original stays behind in <code>DOWNLOADS_PATH</code> (from .env) too - so it exists on disk
+        twice. This job periodically empties just the downloads folder to reclaim that duplicated space.</p>
+      <p class="err small"><strong>Warning:</strong> this stops seeding. qBittorrent keeps listing a
+        torrent as seeding after this runs, but once its file is deleted here it can no longer serve it
+        to other peers - qBittorrent has no way to detect the deletion and won't pause or remove the
+        torrent itself.</p>
+      <div class="row">
+        <label class="switch">
+          <input type="checkbox" id="cleanup-enabled-toggle" />
+          <span class="slider"></span>
+        </label>
+        <span id="cleanup-enabled-label">Cleanup: off</span>
+        <button id="cleanup-run-now-btn">Run now</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label>Frequency
+          <select id="cleanup-frequency">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </label>
+        <label>At
+          <input type="time" id="cleanup-time" />
+        </label>
+      </div>
+      <div class="row" id="cleanup-weekly-row" style="margin-top:8px">
+        <label>Day of week
+          <select id="cleanup-weekly-day">
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4">Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" id="cleanup-monthly-row" style="margin-top:8px">
+        <label>Monthly rule
+          <select id="cleanup-monthly-mode">
+            <option value="day_of_month">Day of month</option>
+            <option value="nth_weekday">Nth weekday</option>
+            <option value="last_day">Last day of month</option>
+          </select>
+        </label>
+        <label id="cleanup-monthly-day-wrap">Day
+          <input type="number" id="cleanup-monthly-day" min="1" max="31" style="width:4em" />
+        </label>
+        <label id="cleanup-monthly-nth-wrap">Which
+          <select id="cleanup-monthly-nth">
+            <option value="1">1st</option>
+            <option value="2">2nd</option>
+            <option value="3">3rd</option>
+            <option value="4">4th</option>
+            <option value="-1">Last</option>
+          </select>
+        </label>
+        <label id="cleanup-monthly-weekday-wrap">Weekday
+          <select id="cleanup-monthly-weekday">
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4">Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="cleanup-save-btn">Save schedule</button>
+      </div>
+      <p class="muted small">Last run: <span id="cleanup-last-run">{{ cleanup.last_run or 'never' }}</span>
+        &nbsp;·&nbsp; Next run: <span id="cleanup-next-run">{{ cleanup.next_run or '-' }}</span></p>
+      <div id="cleanup-result" hidden></div>
+    </section>
+
+    <section class="card">
       <div class="card-header"><h2>Monitoring</h2></div>
       <p>
         <a class="open" href="{{ grafana_url }}" target="_blank">Grafana dashboard ↗</a>
@@ -309,6 +391,94 @@
       btn.textContent = 'Save token';
     });
 
+    function applyMonthlyModeVisibility() {
+      const mode = document.getElementById('cleanup-monthly-mode').value;
+      document.getElementById('cleanup-monthly-day-wrap').style.display = mode === 'day_of_month' ? 'inline-block' : 'none';
+      document.getElementById('cleanup-monthly-nth-wrap').style.display = mode === 'nth_weekday' ? 'inline-block' : 'none';
+      document.getElementById('cleanup-monthly-weekday-wrap').style.display = mode === 'nth_weekday' ? 'inline-block' : 'none';
+    }
+
+    function applyCleanupVisibility(freq) {
+      document.getElementById('cleanup-weekly-row').style.display = freq === 'weekly' ? 'flex' : 'none';
+      document.getElementById('cleanup-monthly-row').style.display = freq === 'monthly' ? 'flex' : 'none';
+      applyMonthlyModeVisibility();
+    }
+
+    function applyCleanupSettings(c) {
+      document.getElementById('cleanup-enabled-toggle').checked = c.enabled;
+      document.getElementById('cleanup-enabled-label').textContent = c.enabled ? 'Cleanup: on' : 'Cleanup: off';
+      document.getElementById('cleanup-frequency').value = c.frequency;
+      document.getElementById('cleanup-time').value = c.time;
+      document.getElementById('cleanup-weekly-day').value = c.weekly_day;
+      document.getElementById('cleanup-monthly-mode').value = c.monthly_mode;
+      document.getElementById('cleanup-monthly-day').value = c.monthly_day;
+      document.getElementById('cleanup-monthly-nth').value = c.monthly_nth;
+      document.getElementById('cleanup-monthly-weekday').value = c.monthly_weekday;
+      document.getElementById('cleanup-last-run').textContent = c.last_run || 'never';
+      document.getElementById('cleanup-next-run').textContent = c.next_run || '-';
+      applyCleanupVisibility(c.frequency);
+    }
+
+    async function loadCleanupSettings() {
+      const res = await fetch('/api/cleanup/settings');
+      const data = await res.json();
+      applyCleanupSettings(data);
+    }
+
+    document.getElementById('cleanup-frequency').addEventListener('change', (e) => applyCleanupVisibility(e.target.value));
+    document.getElementById('cleanup-monthly-mode').addEventListener('change', applyMonthlyModeVisibility);
+
+    async function saveCleanupSettings(patch) {
+      const res = await fetch('/api/cleanup/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const result = await res.json();
+      applyCleanupSettings(result);
+      return result;
+    }
+
+    document.getElementById('cleanup-enabled-toggle').addEventListener('change', async (e) => {
+      await saveCleanupSettings({ enabled: e.target.checked });
+    });
+
+    document.getElementById('cleanup-save-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('cleanup-save-btn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      await saveCleanupSettings({
+        enabled: document.getElementById('cleanup-enabled-toggle').checked,
+        frequency: document.getElementById('cleanup-frequency').value,
+        time: document.getElementById('cleanup-time').value,
+        weekly_day: parseInt(document.getElementById('cleanup-weekly-day').value, 10),
+        monthly_mode: document.getElementById('cleanup-monthly-mode').value,
+        monthly_day: parseInt(document.getElementById('cleanup-monthly-day').value, 10),
+        monthly_nth: parseInt(document.getElementById('cleanup-monthly-nth').value, 10),
+        monthly_weekday: parseInt(document.getElementById('cleanup-monthly-weekday').value, 10),
+      });
+      btn.disabled = false;
+      btn.textContent = 'Save schedule';
+    });
+
+    document.getElementById('cleanup-run-now-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('cleanup-run-now-btn');
+      const box = document.getElementById('cleanup-result');
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      box.hidden = false;
+      box.innerHTML = '<p class="muted">Deleting everything in the downloads folder...</p>';
+      const res = await fetch('/api/cleanup/run-now', { method: 'POST' });
+      const result = await res.json();
+      box.innerHTML = result.ok
+        ? `<p><strong>Done.</strong> ${result.message}</p>`
+        : `<p class="err">Failed: ${result.message}</p>`;
+      btn.disabled = false;
+      btn.textContent = 'Run now';
+      loadCleanupSettings();
+      refresh();
+    });
+
     document.getElementById('relink-btn').addEventListener('click', async () => {
       await fetch('/api/relink', { method: 'POST' });
       refresh();
@@ -332,6 +502,7 @@
     refresh();
     setInterval(refresh, 4000);
     loadKeys();
+    loadCleanupSettings();
   </script>
 </body>
 </html>
