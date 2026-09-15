@@ -258,13 +258,12 @@ services:
       # its "Use this" button create movies/tv/downloads folders on the
       # chosen drive, to help you point MEDIA_MOVIES_PATH/MEDIA_TV_PATH/
       # DOWNLOADS_PATH in .env at external storage. /Volumes is macOS's
-      # external-drive location and is shared into containers by Docker
-      # Desktop by default. On Linux, uncomment/add the mounts matching
-      # where your drives are (commonly /mnt or /media) - Docker Desktop on
-      # macOS will refuse to start this container if you list a host path
-      # it hasn't been given access to (Settings -> Resources -> File Sharing).
-      # This grants the linker write access to the drive to create those
-      # folders - not read-only, since "Use this" needs to mkdir on it.
+      # external-drive location, shared into containers by Docker Desktop by
+      # default. On Linux (no such restriction there - any host path can be
+      # bind-mounted), uncomment whichever line below matches where your
+      # drives actually live - commonly /mnt (e.g. /mnt/Media on a NAS) or
+      # /media. This grants the linker write access to create folders on
+      # these drives - not read-only, since "Use this" needs to mkdir on it.
       - /Volumes:/hostfs/Volumes
       # - /mnt:/hostfs/mnt
       # - /media:/hostfs/media

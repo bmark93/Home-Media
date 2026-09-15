@@ -86,7 +86,8 @@ hit "Re-link now":
 
 ### 🖥️ The linker's own dashboard
 
-Open **http://localhost:5050** and you get:
+Open **http://localhost:5050** (or `http://<server-ip>:5050` if this isn't running on
+your own machine) and you get:
 
 - Live status + auto-linked state for every service
 - **Host storage** — scans attached drives and lets you point all the media/download
@@ -125,7 +126,10 @@ First boot takes a couple of minutes (Sonarr/Radarr/Prowlarr initialize their
 databases). The linker waits for everything to be healthy, then links it all together
 automatically.
 
-👉 Now open **http://localhost:5050** and watch it happen.
+👉 Now open **http://localhost:5050** (`http://<server-ip>:5050` on a remote/headless
+box) and watch it happen. The linker's own "Open" links in that dashboard always point
+at whichever host/IP you're already viewing it from, so they work either way without
+any configuration.
 
 ## 🧩 The few things that stay manual
 
@@ -142,7 +146,10 @@ step, so it's a two-minute job.
 
 ## 🌐 Service URLs
 
-| Service | URL |
+Replace `localhost` with your server's LAN IP or hostname if you're not running this on
+the machine you're browsing from:
+
+| Service | Port |
 |---|---|
 | 🔧 Linker (this app) | http://localhost:5050 |
 | 🎬 Plex | http://localhost:32400/web |

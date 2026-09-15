@@ -20,13 +20,18 @@ app = FastAPI(title="Home Media Manager")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
+# Port + path only, not full URLs: this app doesn't know what hostname/IP
+# the browser is actually reaching it on (could be localhost on a dev
+# machine, or a LAN IP/hostname on a real server) - so "Open" links are
+# built client-side in the browser against whatever host it's already on
+# (window.location.hostname), not hardcoded here.
 SERVICE_LINKS = {
-    "plex": {"label": "Plex", "url": "http://localhost:32400/web"},
-    "seerr": {"label": "Seerr", "url": "http://localhost:5055"},
-    "sonarr": {"label": "Sonarr", "url": "http://localhost:8989"},
-    "radarr": {"label": "Radarr", "url": "http://localhost:7878"},
-    "prowlarr": {"label": "Prowlarr", "url": "http://localhost:9696"},
-    "qbittorrent": {"label": "qBittorrent", "url": "http://localhost:8080"},
+    "plex": {"label": "Plex", "port": 32400, "path": "/web"},
+    "seerr": {"label": "Seerr", "port": 5055, "path": ""},
+    "sonarr": {"label": "Sonarr", "port": 8989, "path": ""},
+    "radarr": {"label": "Radarr", "port": 7878, "path": ""},
+    "prowlarr": {"label": "Prowlarr", "port": 9696, "path": ""},
+    "qbittorrent": {"label": "qBittorrent", "port": 8080, "path": ""},
 }
 
 
@@ -42,7 +47,8 @@ def build_status() -> dict:
         svc = STATE.services.get(key)
         result[key] = {
             "label": meta["label"],
-            "url": meta["url"],
+            "port": meta["port"],
+            "path": meta["path"],
             "reachable": svc.reachable if svc else False,
             "linked": svc.linked if svc else {},
             "error": svc.error if svc else None,
@@ -61,8 +67,8 @@ async def index(request: Request):
             "running": STATE.running,
             "last_run": STATE.last_run,
             "auto_update": SETTINGS.auto_update,
-            "grafana_url": "http://localhost:3000",
-            "prometheus_url": "http://localhost:9090",
+            "grafana_port": 3000,
+            "prometheus_port": 9090,
         },
     )
 

@@ -40,7 +40,7 @@
                 <span class="muted">-</span>
               {% endif %}
             </td>
-            <td><a class="open" href="{{ s.url }}" target="_blank">Open ↗</a></td>
+            <td><a class="open" href="#" data-port="{{ s.port }}" data-path="{{ s.path }}" target="_blank">Open ↗</a></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -117,9 +117,9 @@
     <section class="card">
       <div class="card-header"><h2>Monitoring</h2></div>
       <p>
-        <a class="open" href="{{ grafana_url }}" target="_blank">Grafana dashboard ↗</a>
+        <a class="open" href="#" data-port="{{ grafana_port }}" data-path="" target="_blank">Grafana dashboard ↗</a>
         &nbsp;·&nbsp;
-        <a class="open" href="{{ prometheus_url }}" target="_blank">Prometheus ↗</a>
+        <a class="open" href="#" data-port="{{ prometheus_port }}" data-path="" target="_blank">Prometheus ↗</a>
       </p>
     </section>
   </main>
@@ -133,6 +133,19 @@
   </footer>
 
   <script>
+    // "Open" links only ever carry a port/path (see main.py) - built here
+    // against whatever host is already in the address bar, so they work
+    // whether this page is reached as localhost, a LAN IP, or a hostname.
+    function serviceUrl(port, path) {
+      return `${location.protocol}//${location.hostname}:${port}${path || ''}`;
+    }
+
+    function resolveOpenLinks(container) {
+      container.querySelectorAll('a.open[data-port]').forEach((a) => {
+        a.href = serviceUrl(a.dataset.port, a.dataset.path);
+      });
+    }
+
     async function refresh() {
       const res = await fetch('/api/status');
       const data = await res.json();
@@ -154,9 +167,10 @@
             <td><span class="dot ${s.reachable ? 'up' : 'down'}"></span> ${s.reachable ? 'running' : 'unreachable'}
               ${s.error ? `<span class="err">(${s.error})</span>` : ''}</td>
             <td>${linked}</td>
-            <td><a class="open" href="${s.url}" target="_blank">Open ↗</a></td>
+            <td><a class="open" href="#" data-port="${s.port}" data-path="${s.path || ''}" target="_blank">Open ↗</a></td>
           </tr>`;
       }
+      resolveOpenLinks(rows);
     }
 
     async function loadKeys() {
@@ -302,6 +316,8 @@
       refresh();
     });
 
+    resolveOpenLinks(document);
+    refresh();
     setInterval(refresh, 4000);
     loadKeys();
   </script>
