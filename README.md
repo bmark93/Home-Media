@@ -150,21 +150,22 @@ step, so it's a two-minute job.
 
 ## 🌐 Service URLs
 
-Replace `localhost` with your server's LAN IP or hostname if you're not running this on
-the machine you're browsing from:
+Replace `<server-ip>` with your server's actual LAN IP or hostname — the same value
+you set as `SERVER_IP` in `.env`. `localhost` only works if you're browsing from the same
+machine the stack runs on.
 
 | Service | Port |
 |---|---|
-| 🔧 Linker (this app) | http://localhost:5050 |
-| 🎬 Plex | http://localhost:32400/web |
-| 📱 Seerr | http://localhost:5055 |
-| 📺 Sonarr | http://localhost:8989 |
-| 🎞️ Radarr | http://localhost:7878 |
-| 🔍 Prowlarr | http://localhost:9696 |
-| ⬇️ qBittorrent | http://localhost:8080 |
-| 📊 Grafana | http://localhost:3000 |
-| 📈 Prometheus | http://localhost:9090 |
-| ♻️ Watchtower | http://localhost:8091 *(API only)* |
+| 🔧 Linker (this app) | http://\<server-ip\>:5050 |
+| 🎬 Plex | http://\<server-ip\>:32400/web |
+| 📱 Seerr | http://\<server-ip\>:5055 |
+| 📺 Sonarr | http://\<server-ip\>:8989 |
+| 🎞️ Radarr | http://\<server-ip\>:7878 |
+| 🔍 Prowlarr | http://\<server-ip\>:9696 |
+| ⬇️ qBittorrent | http://\<server-ip\>:8080 |
+| 📊 Grafana | http://\<server-ip\>:3000 |
+| 📈 Prometheus | http://\<server-ip\>:9090 |
+| ♻️ Watchtower | http://\<server-ip\>:8091 *(API only)* |
 
 ## 🔐 Logins & network exposure
 
