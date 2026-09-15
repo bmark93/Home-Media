@@ -257,6 +257,7 @@ services:
       PROJECT_DIR: ${PWD}
       HOST_HOME: ${HOME}
       SERVER_IP: ${SERVER_IP:-localhost}
+      TZ: ${TZ:-UTC}
     volumes:
       - ./config/sonarr:/configs/sonarr:ro
       - ./config/radarr:/configs/radarr:ro

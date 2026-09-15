@@ -7,6 +7,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from app.cleanup import SETTINGS as CLEANUP_SETTINGS
+from app.cleanup import cleanup_loop, run_cleanup_now
+from app.cleanup import update_settings as update_cleanup_settings
 from app.compose_control import recreate_services
 from app.docker_metrics import render_name_map
 from app.linking import STATE, get_connection_info, run_linking
@@ -39,6 +42,7 @@ SERVICE_LINKS = {
 async def on_startup() -> None:
     asyncio.create_task(run_linking(QBIT_USER, QBIT_PASS))
     asyncio.create_task(auto_update_loop())
+    asyncio.create_task(cleanup_loop())
 
 
 def build_status() -> dict:
@@ -66,6 +70,7 @@ async def index(request: Request):
             "running": STATE.running,
             "last_run": STATE.last_run,
             "auto_update": SETTINGS.auto_update,
+            "cleanup": CLEANUP_SETTINGS.as_dict(),
             "grafana_url": f"http://{SERVER_IP}:3000",
             "prometheus_url": f"http://{SERVER_IP}:9090",
         },
@@ -105,6 +110,28 @@ async def set_auto_update(request: Request):
     SETTINGS.save()
     STATE.note(f"Auto-update {'enabled' if enabled else 'disabled'} via UI.")
     return JSONResponse({"auto_update": SETTINGS.auto_update})
+
+
+@app.get("/api/cleanup/settings")
+async def get_cleanup_settings():
+    return JSONResponse(CLEANUP_SETTINGS.as_dict())
+
+
+@app.post("/api/cleanup/settings")
+async def set_cleanup_settings(request: Request):
+    body = await request.json()
+    result = update_cleanup_settings(body)
+    STATE.note(
+        f"Cleanup schedule updated: {'enabled' if result['enabled'] else 'disabled'}, "
+        f"{result['frequency']} at {result['time']}."
+    )
+    return JSONResponse(result)
+
+
+@app.post("/api/cleanup/run-now")
+async def api_cleanup_run_now():
+    ok, msg = run_cleanup_now()
+    return JSONResponse({"ok": ok, "message": msg})
 
 
 @app.get("/api/keys")
