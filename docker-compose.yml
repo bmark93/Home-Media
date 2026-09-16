@@ -183,6 +183,9 @@ services:
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    secrets:
+      - linker_user
+      - linker_pass
     ports:
       - "${BIND_ADDRESS:-0.0.0.0}:9090:9090"
     restart: unless-stopped
@@ -237,13 +240,11 @@ services:
     image: containrrr/watchtower:latest
     environment:
       WATCHTOWER_HTTP_API_UPDATE: "true"
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_API_TOKEN:-changeme-token}
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_API_TOKEN:?WATCHTOWER_API_TOKEN is required}
       WATCHTOWER_CLEANUP: "true"
       DOCKER_API_VERSION: "1.44"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - "${BIND_ADDRESS:-0.0.0.0}:8091:8080"
     restart: unless-stopped
     networks: [media-net]
 
@@ -251,9 +252,11 @@ services:
   linker:
     build: ./linker
     environment:
+      LINKER_USER: ${LINKER_USER:?LINKER_USER is required}
+      LINKER_PASS: ${LINKER_PASS:?LINKER_PASS is required}
       QBIT_USER: ${QBIT_USER:-admin}
       QBIT_PASS: ${QBIT_PASS:-admin}
-      WATCHTOWER_API_TOKEN: ${WATCHTOWER_API_TOKEN:-changeme-token}
+      WATCHTOWER_API_TOKEN: ${WATCHTOWER_API_TOKEN:?WATCHTOWER_API_TOKEN is required}
       PROJECT_DIR: ${PWD}
       HOST_HOME: ${HOME}
       SERVER_IP: ${SERVER_IP:-localhost}
@@ -301,7 +304,7 @@ services:
       # the host for the same reason as the project-dir mount above.
       - ${HOME}:${HOME}
     ports:
-      - "${BIND_ADDRESS:-0.0.0.0}:5050:8000"
+      - "${LINKER_BIND_ADDRESS:-127.0.0.1}:5050:8000"
     depends_on:
       sonarr:
         condition: service_healthy
@@ -320,3 +323,9 @@ volumes:
   prometheus-data:
   grafana-data:
   linker-data:
+
+secrets:
+  linker_user:
+    environment: LINKER_USER
+  linker_pass:
+    environment: LINKER_PASS
