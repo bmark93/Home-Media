@@ -89,16 +89,18 @@ hit "Re-link now":
 
 ### 🖥️ The linker's own dashboard
 
-Open **http://localhost:5050** (or `http://<server-ip>:5050` if this isn't running on
-your own machine) and you get:
+Open **http://localhost:5050** and sign in with your configured `LINKER_USER` and
+`LINKER_PASS`. The linker is an admin surface and binds to loopback by default.
+For remote access, see [Logins & network exposure](#-logins--network-exposure). You get:
 
 - Live status + auto-linked state for every service
 - **Host storage** — scans attached drives and lets you point all the media/download
   paths at one with a single click (creates the folders, rewrites `.env`, recreates the
   affected containers — fully automatic)
 - **Plex claim** — paste a claim token, it's applied automatically
-- **Connection info** — copy-paste-ready hostnames/ports/API keys for the one manual step
-  Seerr still needs
+- **Connection info** — hostnames, ports, and key availability for the one manual step
+  Seerr still needs; click **Reveal API keys** and enter your current linker password
+  to reveal and copy keys. Raw keys are not loaded automatically.
 - **Container updates** — on/off toggle + a manual "check now" button
 
 ## 🚀 Quick start
@@ -115,9 +117,26 @@ Open `.env` and set at minimum:
 |---|---|
 | `PUID` / `PGID` | Your user IDs (`id -u` / `id -g`) so files aren't owned by root |
 | `QBIT_USER` / `QBIT_PASS` | qBittorrent login — enforced on every startup |
-| `BIND_ADDRESS` | `0.0.0.0` for LAN access, `127.0.0.1` for this machine only |
+| `LINKER_USER` / `LINKER_PASS` | Required linker admin login; no working defaults |
+| `WATCHTOWER_API_TOKEN` | Required separate random token shared internally by linker and Watchtower |
+| `LINKER_BIND_ADDRESS` | Linker only: defaults to `127.0.0.1` |
+| `BIND_ADDRESS` | Other service UIs: `0.0.0.0` for LAN access, `127.0.0.1` for this machine only |
 | `SERVER_IP` | This machine's LAN IP/hostname — used to build the linker's "Open" links |
 | `PLEX_CLAIM` | Get one at https://www.plex.tv/claim/ **while logged in** — valid 5 min |
+
+Choose a non-example linker username of at least 3 characters, with no colon or
+control characters. The password must have at least 16 characters and 8 distinct
+characters, with no control characters. Common placeholders such as `admin`,
+`change-me`, and `changeme` are rejected. Generate a random password locally with
+Python, then run the command again for a separate Watchtower token:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Set these values in `.env` before starting. Compose rejects missing or empty values
+for all three required inputs; the linker also rejects weak/example credentials at
+startup. Do not reuse the synthetic credentials in the test suite.
 
 > **Tip:** grab the Plex claim token right before the next step since it expires fast.
 > Missed it? No problem — set it later and run `docker compose up -d plex`.
@@ -130,8 +149,9 @@ First boot takes a couple of minutes (Sonarr/Radarr/Prowlarr initialize their
 databases). The linker waits for everything to be healthy, then links it all together
 automatically.
 
-👉 Now open **http://localhost:5050** (`http://<server-ip>:5050` on a remote/headless
-box) and watch it happen. Set `SERVER_IP` in `.env` to that same IP/hostname first -
+👉 Now open **http://localhost:5050** and sign in. For a remote/headless box, configure
+protected remote access as described below. Set `SERVER_IP` in `.env` to the media
+server's reachable IP/hostname first -
 it's what the linker's own "Open" links (and Grafana/Prometheus) are built from, always
 plain `http://`.
 
@@ -145,8 +165,10 @@ These are tied to your accounts/personal choices — nothing can safely script t
 | Sign into **Plex** + add libraries | Tied to your Plex account |
 | Sign into **Seerr** + connect Sonarr/Radarr | Same reason — plus Seerr's settings API only accepts a logged-in session, not even an API key |
 
-The linker's **Connection info** panel gives you copy-paste-ready values for the Seerr
-step, so it's a two-minute job.
+The linker's **Connection info** panel shows hostnames and ports for the Seerr step.
+Click **Reveal API keys**, then confirm your current linker password to show the keys.
+The password field clears on submission; revealed keys stay in the current page only
+and are not saved to browser storage. Reloading hides them again.
 
 ## 🌐 Service URLs
 
@@ -156,7 +178,7 @@ machine the stack runs on.
 
 | Service | Port |
 |---|---|
-| 🔧 Linker (this app) | http://\<server-ip\>:5050 |
+| 🔧 Linker (this app) | http://localhost:5050 (loopback by default) |
 | 🎬 Plex | http://\<server-ip\>:32400/web |
 | 📱 Seerr | http://\<server-ip\>:5055 |
 | 📺 Sonarr | http://\<server-ip\>:8989 |
@@ -165,11 +187,12 @@ machine the stack runs on.
 | ⬇️ qBittorrent | http://\<server-ip\>:8080 |
 | 📊 Grafana | http://\<server-ip\>:3000 |
 | 📈 Prometheus | http://\<server-ip\>:9090 |
-| ♻️ Watchtower | http://\<server-ip\>:8091 *(API only)* |
+| ♻️ Watchtower | Internal only: `http://watchtower:8080` on `media-net`; no host port |
 
 ## 🔐 Logins & network exposure
 
-Everything defaults to `admin` / `admin` so a home setup doesn't need password fuss:
+The linker requires the explicit credentials above. The existing qBittorrent and
+Grafana example logins remain `admin` / `admin`:
 
 - **qBittorrent** — `.env` is re-enforced on *every* startup; change it through the UI and
   it reverts on the next restart unless you change `.env` instead.
@@ -182,6 +205,25 @@ machine (`127.0.0.1`). With default passwords + `0.0.0.0`, anyone on your networ
 in — fine on a trusted home network, otherwise set real passwords or lock it to
 `127.0.0.1`. qBittorrent's peer port (`6881`) is never restricted by this, since it needs
 inbound connections from the internet to work at all.
+
+`LINKER_BIND_ADDRESS` independently controls the linker and defaults to `127.0.0.1`.
+Its dashboard, static files, metrics, and API all require HTTP Basic authentication.
+Basic authentication does not encrypt credentials: keep remote access behind HTTPS
+with a trusted reverse proxy, or use an encrypted VPN/tunnel. To bind directly to a
+VPN/private interface, deliberately set `LINKER_BIND_ADDRESS` to that interface's IP;
+setting it to `0.0.0.0` exposes the admin listener on every interface. No turnkey
+reverse proxy or VPN is bundled.
+
+A reverse proxy must preserve the public Host and communicate the public HTTPS
+scheme through trusted proxy headers. Configure the ASGI server to trust only that
+proxy, and prevent clients from reaching the backend directly. Mutating requests
+must send the same-origin `Origin`, a JSON content type, and `X-CSRF-Token` matching
+the HttpOnly, SameSite=Strict cookie issued by the dashboard. The dashboard handles
+this automatically; a mismatched proxy origin causes mutations to be rejected.
+The bundled Prometheus service automatically receives the same linker credentials as
+Compose secrets and uses them for its internal scrape; the values are not written into
+the tracked Prometheus configuration. Any separate metrics client must likewise supply
+Basic credentials.
 
 ## 🛠️ Troubleshooting
 

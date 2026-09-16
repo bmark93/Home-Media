@@ -1,27 +1,39 @@
 import asyncio
 import os
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from starlette.requests import Request
-
 from app.cleanup import SETTINGS as CLEANUP_SETTINGS
 from app.cleanup import cleanup_loop, run_cleanup_now
 from app.cleanup import update_settings as update_cleanup_settings
 from app.compose_control import recreate_services
 from app.docker_metrics import render_name_map
 from app.linking import STATE, get_connection_info, run_linking
+from app.security import (
+    SECURITY_HEADERS,
+    SecurityMiddleware,
+    password_matches,
+    validate_credentials,
+)
 from app.storage import list_drives, set_plex_claim, use_drive
 from app.updater import SETTINGS, auto_update_loop, trigger_update
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.requests import Request
 
 QBIT_USER = os.environ.get("QBIT_USER", "admin")
 QBIT_PASS = os.environ.get("QBIT_PASS", "admin")
 
 app = FastAPI(title="Home Media Manager")
+app.add_middleware(SecurityMiddleware)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+
+
+@app.exception_handler(Exception)
+async def internal_error(request: Request, exc: Exception):
+    return JSONResponse({"detail": "Internal server error"}, status_code=500,
+                        headers=SECURITY_HEADERS)
 
 # SERVER_IP in .env is the single source of truth for "Open" links - set it
 # to this machine's real LAN IP/hostname. Always plain http://, never https,
@@ -40,6 +52,9 @@ SERVICE_LINKS = {
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    app.state.credentials = validate_credentials(
+        os.environ.get("LINKER_USER"), os.environ.get("LINKER_PASS")
+    )
     asyncio.create_task(run_linking(QBIT_USER, QBIT_PASS))
     asyncio.create_task(auto_update_loop())
     asyncio.create_task(cleanup_loop())
@@ -65,6 +80,7 @@ async def index(request: Request):
         "index.html",
         {
             "request": request,
+            "csrf_token": request.state.csrf_token,
             "services": build_status(),
             "log": list(reversed(STATE.log)),
             "running": STATE.running,
@@ -136,7 +152,24 @@ async def api_cleanup_run_now():
 
 @app.get("/api/keys")
 async def api_keys():
-    return JSONResponse(get_connection_info())
+    return JSONResponse({
+        service: {"host": info["host"], "port": info["port"],
+                  "key_available": bool(info["api_key"])}
+        for service, info in get_connection_info().items()
+    })
+
+
+@app.post("/api/keys/reveal")
+async def reveal_keys(request: Request):
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    password = body.get("password") if isinstance(body, dict) else None
+    if not password_matches(password, request.app.state.credentials[1]):
+        return JSONResponse({"detail": "Re-authentication failed"}, status_code=403,
+                            headers={"Cache-Control": "no-store"})
+    return JSONResponse(get_connection_info(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/drives")

@@ -15,5 +15,8 @@ scrape_configs:
       - targets: ["localhost:9090"]
 
   - job_name: linker
+    basic_auth:
+      username_file: /run/secrets/linker_user
+      password_file: /run/secrets/linker_pass
     static_configs:
       - targets: ["linker:8000"]
